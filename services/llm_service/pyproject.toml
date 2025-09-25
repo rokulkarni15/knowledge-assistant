@@ -1,5 +1,5 @@
 [project]
-name = "api-gateway"
+name = "llm-service"
 version = "0.1.0"
 description = "Add your description here"
 authors = [
@@ -10,11 +10,11 @@ dependencies = [
     "fastapi>=0.117.1",
     "httpx>=0.28.1",
     "pydantic-settings>=2.10.1",
-    "uvicorn[standard]>=0.36.0",
+    "uvicorn>=0.36.0",
 ]
 
 [project.scripts]
-api-gateway = "api_gateway:main"
+llm-service = "llm_service:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -22,7 +22,6 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
 ]
