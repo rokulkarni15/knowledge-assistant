@@ -10,7 +10,7 @@ class OllamaClient:
         self.base_url = base_url
         self.client = httpx.AsyncClient()
 
-    async def chat(self, model: str, messages) -> str:
+    async def chat(self, model: str, messages: List[dict]) -> str:
         """Chat with the ollama model"""
         url = f"{self.base_url}/api/chat"
 
@@ -51,6 +51,26 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Ollama generate error: {e}")
             raise Exception(f"Ollama generate failed: {e}")
+        
+    async def generate_embeddings(self, model: str, input: str) -> List[float]:
+        """Generate embeddings using the ollama model"""
+        url = f"{self.base_url}/api/embed"
+        
+        payload = {
+            "model": model,
+            "input": input,
+            "stream": False
+        }
+
+        try:
+            logger.info(f"Calling Ollama embed endpoint using {model}")
+            response = self.client.post(url, json=payload)
+            response.raise_for_status()
+
+            result = response.json()
+            return result["embeddings"][0]
+        except Exception as e:
+            raise Exception(f"Ollama embeddings failed: {e}")
         
     async def is_available(self) -> bool:
         """Check if Ollama is running"""
