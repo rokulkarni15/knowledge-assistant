@@ -9,6 +9,7 @@ from llm_service.core import (
 from typing import List, Optional, Dict, Any
 import logging
 import json
+from llm_service.core.models import EntityExtractionModel, TaskExtractionModel, DocumentAnalysisModel
 
 logger = logging.getLogger(__name__)
 
@@ -32,26 +33,13 @@ class ChatService:
         """Extract entities from text"""
         try:
             prompt = build_extraction_prompt(text)
-            response = await self.ollama.generate(self.model, prompt)
-            
-            # Try to parse JSON from response
-            try:
-                start = response.find('{')
-                end = response.rfind('}') + 1
-                if start >= 0 and end > start:
-                    json_str = response[start:end]
-                    return json.loads(json_str)
-            except:
-                pass
-            
-            # Fallback
-            return {
-                "people": [],
-                "organizations": [],
-                "concepts": [text[:100] + "..." if len(text) > 100 else text],
-                "summary": "Content processed successfully"
-            }
-            
+            response = await self.ollama.generate_structured(
+                model=self.model,
+                prompt=prompt,
+                response_format=EntityExtractionModel
+            )
+            # convert pydantic model to dict
+            return response.model_dump()
         except Exception as e:
             logger.error(f"Entity extraction error: {e}")
             return {
@@ -74,13 +62,12 @@ class ChatService:
     async def extract_tasks(self, text: str) -> Dict[str, Any]:
         try:
             prompt = build_task_extraction_prompt(text)
-            response = await self.ollama.generate(self.model, prompt)
-
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start >= 0 and end > start:
-                json_str = response[start:end]
-                return json.loads(json_str)
+            response = await self.ollama.generate_structured(
+                model=self.model,
+                prompt=prompt,
+                response_format=TaskExtractionModel,
+            )
+            return response.model_dump()
         except Exception as e:
             logger.error(f"Task extraction error: {e}")
             return {
@@ -108,17 +95,14 @@ class ChatService:
         """Comprehensive document analysis"""
         try:
             prompt = build_analysis_prompt(text, analysis_type)
-            response = await self.ollama.generate(self.model, prompt)
+            response = await self.ollama.generate_structured(
+                model=self.model,
+                prompt=prompt,
+                response_format=DocumentAnalysisModel
+            )
             
-            # Try to extract JSON
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start >= 0 and end > start:
-                json_str = response[start:end]
-                return json.loads(json_str)
-            
-            raise ValueError("No valid JSON found in response")
-            
+            return response.model_dump()
+                    
         except Exception as e:
             logger.error(f"Document analysis error: {e}")
             return {

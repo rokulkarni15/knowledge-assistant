@@ -1,6 +1,7 @@
 import httpx
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Type
+from pydantic import BaseModel
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,30 @@ class OllamaClient:
             logger.error(f"Ollama generate error: {e}")
             raise Exception(f"Ollama generate failed: {e}")
         
+    async def generate_structured(self, model: str, prompt: str, response_format: Type[BaseModel]) -> dict:
+        """Generate structured output using Pydantic schema"""
+        url = f"{self.base_url}/api/generate"
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "format": response_format.model_json_schema(),  # Pydantic schema
+            "stream": False
+        }
+
+        try:
+            logger.info(f"Calling Ollama structured generation with {model}")
+            response = await self.client.post(url, json=payload)
+            response.raise_for_status()
+            
+            result = response.json()
+            # parse response with Pydantic model
+            return response_format.model_validate_json(result["response"])
+            
+        except Exception as e:
+            logger.error(f"Ollama structured generation error: {e}")
+            raise Exception(f"Structured generation failed: {e}")
+
     async def generate_embeddings(self, embedding_model: str, input: str) -> List[float]:
         """Generate embeddings using the ollama model"""
         url = f"{self.base_url}/api/embed"

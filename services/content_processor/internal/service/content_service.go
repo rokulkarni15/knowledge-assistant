@@ -91,7 +91,7 @@ func (s *ContentService) processChunk(content string, chunkIndex int) models.Pro
 			embeddingsChan <- embeddings.Embeddings
 		} else {
 			log.Printf("Embeddings failed for chunk %d: %v", chunkIndex, err)
-			embeddingsChan <- []float64{} // Empty slice as fallback
+			embeddingsChan <- []float64{}
 		}
 	}()
 
@@ -100,7 +100,7 @@ func (s *ContentService) processChunk(content string, chunkIndex int) models.Pro
 			tasksChan <- tasks.Tasks
 		} else {
 			log.Printf("Task extraction failed for chunk %d: %v", chunkIndex, err)
-			tasksChan <- []map[string]interface{}{} // Empty slice as fallback
+			tasksChan <- []map[string]interface{}{}
 		}
 	}()
 
@@ -138,11 +138,14 @@ func (s *ContentService) aggregateChunkResults(chunks []models.ProcessedChunk) *
 	embeddingCount := 0
 	
 	for _, chunk := range chunks {
-		// Type assert the Analysis field
-		if analysis, ok := chunk.Analysis["key_concepts"]; ok {
-			// Type assert to []interface{} first, then convert to []string
-			if concepts, ok := analysis.([]interface{}); ok {
-				for _, concept := range concepts {
+		// type assert the Analysis field
+		if keyConcepts, ok := chunk.Analysis["key_concepts"]; ok {
+			// Try []string first
+			if conceptsSlice, ok := keyConcepts.([]string); ok {
+				allConcepts = append(allConcepts, conceptsSlice...)
+			} else if conceptsInterface, ok := keyConcepts.([]interface{}); ok {
+				// Fallback to []interface{} if needed
+				for _, concept := range conceptsInterface {
 					if conceptStr, ok := concept.(string); ok {
 						allConcepts = append(allConcepts, conceptStr)
 					}
