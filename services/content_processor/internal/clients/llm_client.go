@@ -24,7 +24,7 @@ func NewLLMClient(baseURL string) *LLMClient {
 	}
 }
 
-// AnalyzeContent calls the LLM service analysis endpoint
+// call the LLM service analysis endpoint
 func (c *LLMClient) AnalyzeContent(text string, analysisType string) (*models.LLMAnalysisResponse, error) {
 	payload := map[string]interface{}{
 		"text":          text,
@@ -39,7 +39,7 @@ func (c *LLMClient) AnalyzeContent(text string, analysisType string) (*models.LL
 	return &response, nil
 }
 
-// CreateEmbeddings calls the LLM service embeddings endpoint
+// call the LLM service embeddings endpoint
 func (c *LLMClient) CreateEmbeddings(text string) (*models.LLMEmbeddingResponse, error) {
 	payload := map[string]string{
 		"text": text,
@@ -53,7 +53,7 @@ func (c *LLMClient) CreateEmbeddings(text string) (*models.LLMEmbeddingResponse,
 	return &response, nil
 }
 
-// ExtractTasks calls the LLM service task extraction endpoint
+// call the LLM service task extraction endpoint
 func (c *LLMClient) ExtractTasks(text string) (*models.LLMTaskResponse, error) {
 	payload := map[string]string{
 		"text": text,
@@ -67,7 +67,7 @@ func (c *LLMClient) ExtractTasks(text string) (*models.LLMTaskResponse, error) {
 	return &response, nil
 }
 
-// makeRequest is a helper method to make HTTP requests to LLM service
+// helper method to make HTTP requests to LLM service
 func (c *LLMClient) makeRequest(method, endpoint string, payload interface{}, response interface{}) error {
 	jsonData, err := json.Marshal(payload)
 	if err != nil {

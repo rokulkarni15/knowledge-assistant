@@ -54,7 +54,7 @@ func (s *ContentService) chunkContent(content string, maxChunkSize int) []string
 	return chunks
 }
 
-// processChunk processes a single chunk of content
+// process a single chunk of content
 func (s *ContentService) processChunk(content string, chunkIndex int) models.ProcessedChunk {
 	chunkID := fmt.Sprintf("chunk_%d_%s", chunkIndex, uuid.New().String()[:8])
 	
@@ -112,7 +112,7 @@ func (s *ContentService) processChunk(content string, chunkIndex int) models.Pro
 	return result
 }
 
-// removeDuplicateStrings removes duplicate strings from a slice
+// remove duplicate strings from a slice
 func (s *ContentService) removeDuplicateStrings(slice []string) []string {
 	seen := make(map[string]bool)
 	var result []string
@@ -127,7 +127,7 @@ func (s *ContentService) removeDuplicateStrings(slice []string) []string {
 	return result
 }
 
-// aggregateChunkResults combines results from multiple chunks
+// combine results from multiple chunks
 func (s *ContentService) aggregateChunkResults(chunks []models.ProcessedChunk) *models.ProcessingResponse {
 	var allConcepts []string
 	var allTasks []map[string]interface{}
