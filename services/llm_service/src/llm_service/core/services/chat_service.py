@@ -13,9 +13,10 @@ import json
 logger = logging.getLogger(__name__)
 
 class ChatService:
-    def __init__(self, ollama_url: str = "http://localhost:11434", model: str = "phi3:mini"):
+    def __init__(self, ollama_url: str = "http://localhost:11434", model: str = "phi3:mini", embedding_model: str = "mxbai-embed-large"):
         self.ollama = OllamaClient(ollama_url)
         self.model = model
+        self.embedding_model = embedding_model
         
     async def chat(self, message: str, context: List[str] = None) -> str:
         """Chat with optional context"""
@@ -63,7 +64,7 @@ class ChatService:
     async def create_embeddings(self, text: str) -> List[float]:
         """Generates embeddings for vector search"""
         try:
-            embeddings = await self.ollama.generate_embeddings(self.model, text)
+            embeddings = await self.ollama.generate_embeddings(self.embedding_model, text)
             return embeddings
         except Exception as e:
             logger.error(f"Ollama embeddings error: {e}")

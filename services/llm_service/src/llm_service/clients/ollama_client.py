@@ -52,19 +52,19 @@ class OllamaClient:
             logger.error(f"Ollama generate error: {e}")
             raise Exception(f"Ollama generate failed: {e}")
         
-    async def generate_embeddings(self, model: str, input: str) -> List[float]:
+    async def generate_embeddings(self, embedding_model: str, input: str) -> List[float]:
         """Generate embeddings using the ollama model"""
         url = f"{self.base_url}/api/embed"
         
         payload = {
-            "model": model,
+            "model": embedding_model,
             "input": input,
             "stream": False
         }
 
         try:
-            logger.info(f"Calling Ollama embed endpoint using {model}")
-            response = self.client.post(url, json=payload)
+            logger.info(f"Calling Ollama embed endpoint using {embedding_model}")
+            response = await self.client.post(url, json=payload)
             response.raise_for_status()
 
             result = response.json()
