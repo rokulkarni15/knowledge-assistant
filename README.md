@@ -16,7 +16,7 @@ A personal knowledge management platform built with microservices architecture u
 - AI-powered knowledge extraction using locally-hosted Ollama LLMs
 - Semantic search across all content
 - Real-time updates via WebSocket
-- Distributed microservices with gRPC communication
+- Distributed microservices with REST and gRPC communication
 
 ## Tech Stack
 
