@@ -14,15 +14,60 @@ import (
 
 
 type ContentService struct {
-	llmClient *clients.LLMClient  
+	llmClient *clients.LLMClient 
+	searchClient *clients.SearchClient
 }
 
-func NewContentService() *ContentService {
-	llmClient := clients.NewLLMClient("http://localhost:8002") 
-	
+func NewContentService(llmServiceURL, searchServiceURL string) *ContentService {
 	return &ContentService{
-		llmClient: llmClient,
+		llmClient:    clients.NewLLMClient(llmServiceURL),
+		searchClient: clients.NewSearchClient(searchServiceURL),  // Add this
 	}
+}
+
+func (s *ContentService) ProcessContent(req *models.ProcessingRequest) (*models.ProcessingResponse, error) {
+	log.Printf("Processing content for document: %s", req.DocumentID)
+
+	response := &models.ProcessingResponse{
+		DocumentID: req.DocumentID,
+		Status: "processing",
+		ProcessedAt: time.Now(),
+	}
+
+	// chunk the document for better processing
+	chunks := s.chunkContent(req.Content, 1000) // 1000 chars per chunk
+	log.Printf("Split content into %d chunks", len(chunks))
+
+	// Process chunks concurrently
+	var wg sync.WaitGroup
+	chunkResults := make([]models.ProcessedChunk, len(chunks))
+	
+	for i, chunk := range chunks {
+		wg.Add(1)
+		go func(index int, content string) {
+			defer wg.Done()
+			chunkResults[index] = s.processChunk(content, index)
+		}(i, chunk)
+	}
+	
+	wg.Wait()
+
+	// Aggregate results from all chunks
+	aggregatedResult := s.aggregateChunkResults(chunkResults)
+	
+	response.Analysis = aggregatedResult.Analysis
+	response.Tasks = aggregatedResult.Tasks
+	response.Embeddings = aggregatedResult.Embeddings
+	response.Summary = aggregatedResult.Summary
+	response.Status = "completed"
+	if err := s.indexInSearchService(req.DocumentID, req.Content, aggregatedResult); err != nil {
+		log.Printf("Failed to index in search service: %v", err)
+	} else {
+		log.Printf("Document indexed in search service: %s", req.DocumentID)
+	}
+
+	log.Printf("Completed processing document: %s", req.DocumentID)
+	return response, nil
 }
 
 func (s *ContentService) chunkContent(content string, maxChunkSize int) []string {
@@ -198,42 +243,32 @@ func (s *ContentService) aggregateChunkResults(chunks []models.ProcessedChunk) *
 	}
 }
 
-func (s *ContentService) ProcessContent(req *models.ProcessingRequest) (*models.ProcessingResponse, error) {
-	log.Printf("Processing content for document: %s", req.DocumentID)
-
-	response := &models.ProcessingResponse{
-		DocumentID: req.DocumentID,
-		Status: "processing",
-		ProcessedAt: time.Now(),
-	}
-
-	// chunk the document for better processing
-	chunks := s.chunkContent(req.Content, 1000) // 1000 chars per chunk
-	log.Printf("Split content into %d chunks", len(chunks))
-
-	// Process chunks concurrently
-	var wg sync.WaitGroup
-	chunkResults := make([]models.ProcessedChunk, len(chunks))
+// indexInSearchService sends processed document to Search Service
+func (s *ContentService) indexInSearchService(docID string, content string, result *models.ProcessingResponse) error {
+	// Prepare metadata from analysis
+	metadata := make(map[string]interface{})
 	
-	for i, chunk := range chunks {
-		wg.Add(1)
-		go func(index int, content string) {
-			defer wg.Done()
-			chunkResults[index] = s.processChunk(content, index)
-		}(i, chunk)
+	if result.Analysis != nil {
+		for key, value := range result.Analysis {
+			metadata[key] = value
+		}
+	}
+	// Add tasks to metadata
+	if result.Tasks != nil {
+		for key, value := range result.Tasks {
+			metadata[key] = value
+		}
 	}
 	
-	wg.Wait()
+	// Add summary
+	metadata["summary"] = result.Summary
 
-	// Aggregate results from all chunks
-	aggregatedResult := s.aggregateChunkResults(chunkResults)
-	
-	response.Analysis = aggregatedResult.Analysis
-	response.Tasks = aggregatedResult.Tasks
-	response.Embeddings = aggregatedResult.Embeddings
-	response.Summary = aggregatedResult.Summary
-	response.Status = "completed"
+	indexReq := &clients.IndexDocumentRequest{
+		DocumentID: docID,
+		Content:    content,
+		Embeddings: result.Embeddings,
+		Metadata:   metadata,
+	}
 
-	log.Printf("Completed processing document: %s", req.DocumentID)
-	return response, nil
+	return s.searchClient.IndexDocument(indexReq)
 }

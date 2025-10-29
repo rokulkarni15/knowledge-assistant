@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"content-processor/internal/api"
@@ -10,14 +11,23 @@ import (
 )
 
 func main() {
-	// Initialize services
-	contentService := service.NewContentService()
+	// Get service URLs from environment or use defaults
+	llmServiceURL := os.Getenv("LLM_SERVICE_URL")
+	if llmServiceURL == "" {
+		llmServiceURL = "http://localhost:8002"
+	}
+
+	searchServiceURL := os.Getenv("SEARCH_SERVICE_URL")
+	if searchServiceURL == "" {
+		searchServiceURL = "http://localhost:8004"
+	}
+
+	// Initialize services with both URLs
+	contentService := service.NewContentService(llmServiceURL, searchServiceURL)
 	handlers := api.NewHandlers(contentService)
 
 	// Setup Gin router
 	router := gin.Default()
-	
-	// Set max file size (10MB)
 	router.MaxMultipartMemory = 10 << 20
 
 	// Health check
