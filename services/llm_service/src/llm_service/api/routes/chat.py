@@ -1,9 +1,14 @@
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any, List, Optional, Dict
 from enum import Enum
 from llm_service.core import ChatService
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 router = APIRouter()
 
@@ -16,10 +21,12 @@ chat_service = ChatService(
 class ChatRequest(BaseModel):
     message: str
     context: Optional[List[str]] = None
+    search_limit: int = 3
 
 class ChatResponse(BaseModel):
     response: str
     model: str
+    sources: List[dict]
 
 class ExtractRequest(BaseModel):
     text: str
@@ -78,15 +85,45 @@ class DocAnalysisResponse(BaseModel):
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Chat with optional context"""
+    context = request.context or []
+    sources = []
+    search_service_url = os.getenv("SEARCH_SERVICE_URL", "http://localhost:8004")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            search_response = await client.get(
+                f"{search_service_url}/api/v1/search",
+                params={"q": request.message, "limit": request.search_limit},
+                timeout=5.0,
+            )
+
+            if search_response.status_code == 200:
+                search_data = search_response.json()
+                results = search_data.get("results", [])
+                # Add retrieved documents to context
+                rag_context = [result["content"] for result in results]
+                context.extend(rag_context)
+                # Prepare sources
+                sources = [
+                    {
+                        "document_id": result["document_id"],
+                        "score": result["score"],
+                        "preview": result["content"][:150] + "..." if len(result["content"]) > 150 else result["content"]
+                    }
+                    for result in results
+                ]
+    except Exception as e:
+        logger.warning("RAG search failed, using general knowledge: {e}")
+    
     try:
         response = await chat_service.chat(
             message=request.message, 
-            context=request.context or []
+            context= context if context else None
         )
-        
         return ChatResponse(
             response=response,
-            model=chat_service.model
+            model=chat_service.model,
+            sources=sources
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
