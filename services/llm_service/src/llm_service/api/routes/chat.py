@@ -4,6 +4,10 @@ from pydantic import BaseModel
 from typing import Any, List, Optional, Dict
 from enum import Enum
 from llm_service.core import ChatService
+from clients.mcp_client import MCPClient
+from llm_service.core.tool_prompts import build_tool_selection_prompt
+import json
+import re
 import os
 import logging
 
@@ -18,6 +22,10 @@ chat_service = ChatService(
     model=os.getenv("OLLAMA_MODEL", "phi3:mini")
 )
 
+# Initialize MCP client
+github_mcp_url = os.getenv("GITHUB_MCP_URL", "http://localhost:8006")
+mcp_client = MCPClient(github_mcp_url)
+
 class ChatRequest(BaseModel):
     message: str
     context: Optional[List[str]] = None
@@ -26,7 +34,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     model: str
-    sources: List[dict]
+    doc_sources: List[dict]
+    github_data: Optional[Dict[str, Any]] = None
+    tools_used: List[str] = []
 
 class ExtractRequest(BaseModel):
     text: str
@@ -86,7 +96,9 @@ class DocAnalysisResponse(BaseModel):
 async def chat(request: ChatRequest):
     """Chat with optional context"""
     context = request.context or []
-    sources = []
+    doc_sources = []
+    github_data = None
+    tools_used = []
     search_service_url = os.getenv("SEARCH_SERVICE_URL", "http://localhost:8004")
 
     try:
@@ -103,8 +115,8 @@ async def chat(request: ChatRequest):
                 # Add retrieved documents to context
                 rag_context = [result["content"] for result in results]
                 context.extend(rag_context)
-                # Prepare sources
-                sources = [
+                # Prepare doc_sources
+                doc_sources = [
                     {
                         "document_id": result["document_id"],
                         "score": result["score"],
@@ -116,6 +128,104 @@ async def chat(request: ChatRequest):
         logger.warning("RAG search failed, using general knowledge: {e}")
     
     try:
+        # Ask LLM which tools to use
+        tool_prompt = build_tool_selection_prompt(request.message)
+        tool_decision = await chat_service.ollama.generate(chat_service.model, tool_prompt)
+        
+        # Parse LLM's decision
+        json_match = re.search(r'\[.*?\]', tool_decision)
+        if json_match:
+            needed_tools = json.loads(json_match.group())
+            logger.info(f"🤖 LLM selected tools: {needed_tools}")
+        else:
+            needed_tools = []
+        
+        # Call GitHub MCP tools based on LLM's decision
+        
+        if "github_repos" in needed_tools:
+            github_result = await mcp_client.call_github_tool(
+                "search_repos",
+                {"query": "", "limit": 10}
+            )
+            
+            if "result" in github_result and github_result["result"]:
+                repos_text = "Your GitHub repositories:\n"
+                for repo in github_result["result"]:
+                    repos_text += f"- {repo['name']}: {repo.get('description', 'No description')}\n"
+                    repos_text += f"  Language: {repo.get('language')}, Stars: {repo.get('stars', 0)}\n"
+                
+                context.append(repos_text)
+                tools_used.append("github_repos")
+                
+                if github_data is None:
+                    github_data = {}
+                github_data["repos"] = github_result["result"]
+        
+        if "github_code" in needed_tools:
+            github_result = await mcp_client.call_github_tool(
+                "search_code",
+                {"query": request.message, "limit": 5}
+            )
+            
+            if "result" in github_result and github_result["result"]:
+                code_text = "Code from your repositories:\n"
+                for item in github_result["result"]:
+                    code_text += f"- {item['file']} in {item['repository']}\n"
+                
+                context.append(code_text)
+                tools_used.append("github_code")
+                
+                if github_data is None:
+                    github_data = {}
+                github_data["code"] = github_result["result"]
+        
+        if "github_issues" in needed_tools:
+            resources = await mcp_client.list_github_resources()
+            if resources:
+                repo_name = resources[0]["name"]
+                
+                github_result = await mcp_client.call_github_tool(
+                    "get_issues",
+                    {"repo": repo_name, "state": "open", "limit": 10}
+                )
+                
+                if "result" in github_result and github_result["result"]:
+                    issues_text = f"Open issues:\n"
+                    for issue in github_result["result"]:
+                        issues_text += f"- #{issue['number']}: {issue['title']}\n"
+                    
+                    context.append(issues_text)
+                    tools_used.append("github_issues")
+                    
+                    if github_data is None:
+                        github_data = {}
+                    github_data["issues"] = github_result["result"]
+        
+        if "github_commits" in needed_tools:
+            resources = await mcp_client.list_github_resources()
+            if resources:
+                repo_name = resources[0]["name"]
+                
+                github_result = await mcp_client.call_github_tool(
+                    "get_commits",
+                    {"repo": repo_name, "limit": 10}
+                )
+                
+                if "result" in github_result and github_result["result"]:
+                    commits_text = "Recent commits:\n"
+                    for commit in github_result["result"]:
+                        commits_text += f"- {commit['sha']}: {commit['message']}\n"
+                    
+                    context.append(commits_text)
+                    tools_used.append("github_commits")
+                    
+                    if github_data is None:
+                        github_data = {}
+                    github_data["commits"] = github_result["result"]
+    except Exception as e:
+        logger.error(f"Tool selection/execution failed: {e}")
+    
+    try:
         response = await chat_service.chat(
             message=request.message, 
             context= context if context else None
@@ -123,7 +233,9 @@ async def chat(request: ChatRequest):
         return ChatResponse(
             response=response,
             model=chat_service.model,
-            sources=sources
+            doc_sources=doc_sources,
+            github_data=github_data, 
+            tools_used=tools_used
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
