@@ -16,9 +16,13 @@ func main() {
 	if llmServiceURL == "" {
 		llmServiceURL = "http://localhost:8002"
 	}
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
 
 	// Initialize services
-	searchService := service.NewSearchService(llmServiceURL)
+	searchService := service.NewSearchService(llmServiceURL, redisAddr)
 	handlers := api.NewHandlers(searchService)
 
 	// Setup Gin router

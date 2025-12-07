@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import logging
 from llm_service.api import chat
+from llm_service.api.routes.chat import chat_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -9,8 +10,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("LLM Service starting up...")
+    await chat_service.initialize()
     yield
     logger.info("LLM Service shutting down...")
+    await chat_service.close()
 
 app = FastAPI(
     title="LLM Service",
